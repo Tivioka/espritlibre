@@ -409,36 +409,12 @@ function doSave(mode){
   const recVal=document.getElementById('frec')?.value||'none';if(mode==='task')addTask(title,{notes,due:date,recurrence:recVal});
   else if(mode==='event'||mode==='birthday')addEvent(title,date,mode,rec);
   else if(mode==='list')addList(title);
-  // Schedule notification if set
-  if(notifDt){scheduleNotif(title,notifDt,mode);}
+  if(notifDt){scheduleNotif(title,new Date(notifDt),mode+'_'+Date.now());}
   closeModal({target:document.getElementById('ov')});
   render(S.nav);showToast('✅ Enregistré !');
 }
 
-function scheduleNotif(title,dtStr,type){
-  if(!('Notification' in window)){showToast('❌ Notifications non supportées');return;}
-  const icons={birthday:'🎂',event:'📅',task:'✅',list:'📋'};
-  const icon=icons[type]||'🔔';
-  const dt=new Date(dtStr);
-  const now=new Date();
-  const delay=dt-now;
-  if(delay<=0){showToast('⚠️ Date passée !');return;}
-  // Save to pending notifs
-  const notifs=DB.get('notifs',[]);
-  notifs.push({title,dtStr,type,id:Date.now()});
-  DB.set('notifs',notifs);
-  // Request permission then schedule
-  Notification.requestPermission().then(perm=>{
-    if(perm==='granted'){
-      setTimeout(()=>{
-        new Notification('MindFree '+icon,{body:title,icon:'icon-192.png'});
-      },delay);
-      showToast('🔔 Rappel programmé pour '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
-    } else {
-      showToast('❌ Autorise les notifications dans le navigateur');
-    }
-  });
-}
+
 // LIST DETAIL
 function openLst(lid,name){
   let _dragId=null,_dragOver=null;
@@ -525,10 +501,8 @@ function saveNotif(type,id,title){
   const nk='notif_'+(type==='ev'?'ev':'tk')+'_'+id;
   const label=date+' '+time;
   DB.set(nk,label);
-  // Schedule via Notification API
   scheduleNotif(title,dt,nk);
   document.getElementById(prefix+id)?.classList.remove('open');
-  showToast('🔔 Rappel programmé : '+label);
   render(S.nav);
 }
 function delNotif(nk,dropId){
@@ -537,38 +511,54 @@ function delNotif(nk,dropId){
   showToast('🔕 Rappel supprimé');
   render(S.nav);
 }
+// ─── SYSTÈME DE NOTIFICATIONS ────────────────────────────────────
+// Stocke les rappels dans localStorage, le SW les vérifie au réveil
 function scheduleNotif(title,dt,key){
-  if(!('Notification' in window))return;
+  if(!('Notification' in window)){showToast('❌ Notifications non supportées');return;}
   Notification.requestPermission().then(perm=>{
-    if(perm!=='granted')return;
-    const delay=dt.getTime()-Date.now();
-    if(delay<=0)return;
-    // Store pending notifications
-    const pending=DB.get('pending_notifs',[]);
-    pending.push({title,time:dt.getTime(),key});
-    // Keep only future ones
-    const now=Date.now();
-    DB.set('pending_notifs',pending.filter(n=>n.time>now));
-    // Schedule with setTimeout (works while page open)
-    setTimeout(()=>{
-      try{new Notification('MindFree',{body:title,icon:'icon-192.png'});}catch(e){}
-    },Math.min(delay,2147483647));
+    if(perm!=='granted'){showToast('❌ Active les notifications pour ce site');return;}
+    const time=dt instanceof Date?dt.getTime():new Date(dt).getTime();
+    if(time<=Date.now()){showToast('⚠️ Date déjà passée');return;}
+    // Stocker le rappel
+    const pending=DB.get('pending_notifs',[]).filter(n=>n.time>Date.now());
+    pending.push({title,time,key:String(key)});
+    DB.set('pending_notifs',pending);
+    // Informer le SW
+    if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({
+        type:'SCHEDULE_NOTIF', title, time, key:String(key)
+      });
+    }
+    const d=new Date(time);
+    showToast('🔔 Rappel : '+d.toLocaleDateString(S.lang==='fr'?'fr-FR':'en-US',{day:'numeric',month:'short'})+' à '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
   });
 }
 function checkPendingNotifs(){
   if(!('Notification' in window)||Notification.permission!=='granted')return;
   const now=Date.now();
   const pending=DB.get('pending_notifs',[]);
-  const due=pending.filter(n=>n.time<=now+60000&&n.time>now-60000);
+  const due=pending.filter(n=>n.time<=now&&n.time>now-120000); // dans la fenêtre de 2min
   due.forEach(n=>{
-    try{new Notification('MindFree',{body:n.title,icon:'icon-192.png'});}catch(e){}
+    try{
+      new Notification('🔔 MindFree',{
+        body:n.title, icon:'icon-192.png',
+        badge:'icon-192.png', vibrate:[200,100,200]
+      });
+    }catch(e){}
   });
-  DB.set('pending_notifs',pending.filter(n=>n.time>now));
+  if(due.length) DB.set('pending_notifs',pending.filter(n=>n.time>now));
 }
-setInterval(checkPendingNotifs,60000);
-// Request notif permission on load
+// Vérifier toutes les 30 secondes (plus réactif)
+setInterval(checkPendingNotifs,30000);
+// Vérifier aussi au focus de la page (retour depuis autre app)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible') checkPendingNotifs();
+});
+// Demander permission au démarrage
 if('Notification' in window && Notification.permission==='default'){
-  setTimeout(()=>Notification.requestPermission(),3000);
+  setTimeout(()=>Notification.requestPermission().then(p=>{
+    if(p==='granted') showToast('🔔 Notifications activées !');
+  }),2000);
 }
 
 // SW
@@ -586,91 +576,11 @@ function sendNotif(title,body,icon=''){
   if(Notification.permission!=='granted')return;
   new Notification(title,{body,icon:icon||'icon-192.png'});
 }
-function scheduleNotif(id,title,body,dt){
-  // Save scheduled notifications
-  const notifs=DB.get('scheduled_notifs',[]);
-  notifs.push({id,title,body,dt,sent:false});
-  DB.set('scheduled_notifs',notifs);
-  showToast('🔔 Rappel programmé !');
-}
-function cancelNotif(id){
-  const notifs=DB.get('scheduled_notifs',[]).filter(n=>n.id!==id);
-  DB.set('scheduled_notifs',notifs);
-}
-function checkScheduledNotifs(){
-  const now=Date.now();
-  const notifs=DB.get('scheduled_notifs',[]);
-  let changed=false;
-  notifs.forEach(n=>{
-    if(!n.sent&&new Date(n.dt).getTime()<=now){
-      sendNotif(n.title,n.body);
-      n.sent=true;changed=true;
-    }
-  });
-  if(changed)DB.set('scheduled_notifs',notifs.filter(n=>!n.sent));
-}
-// Check every minute
-setInterval(checkScheduledNotifs,60000);
-checkScheduledNotifs();
 
-function openNotifModal(item){
-  window._notifItem=item;
-  reqNotifPerm(granted=>{
-    if(!granted){showToast('❌ Notifications bloquées dans le navigateur');return;}
-    const now=new Date();
-    const defDate=item.date||item.due||tiso();
-    const nowPlus1=new Date(Date.now()+3600000);
-    const defTime=String(nowPlus1.getHours()).padStart(2,'0')+':'+String(nowPlus1.getMinutes()).padStart(2,'0');
-    _modal(`<div class="modal-title">🔔 Programmer un rappel</div>
-      <div style="background:var(--surface);border-radius:12px;padding:12px;margin-bottom:12px">
-        <div style="font-weight:600;font-size:14px">${item.title}</div>
-        <div style="font-size:12px;color:var(--subtext);margin-top:2px">${item.type==='birthday'?'🎂 Anniversaire':item.type==='task'?'✅ Tâche':'📅 Événement'}</div>
-      </div>
-      <div class="ff"><label>Date du rappel</label><input class="fi" id="notif-date" type="date" value="${defDate}"></div>
-      <div class="ff"><label>Heure du rappel</label><input class="fi" id="notif-time" type="time" value="${defTime}"></div>
-      <div class="ff"><label>Message (optionnel)</label><input class="fi" id="notif-msg" placeholder="Rappel : ${item.title}"></div>
-      <div class="mact">
-        <button class="btn btn-g" onclick="closeModal({target:document.getElementById('ov')})">${T().cancel}</button>
-        <button class="btn btn-p" onclick="doSaveNotif()">🔔 Programmer</button>
-      </div>`);
-  });
-}
-
-function doSaveNotif(){
-  const item=window._notifItem||{};
-  const d=document.getElementById('notif-date');
-  const ti=document.getElementById('notif-time');
-  const msg=document.getElementById('notif-msg');
-  if(!d||!d.value){showToast('❌ Choisissez une date');return;}
-  if(!ti||!ti.value){showToast('❌ Choisissez une heure');return;}
-  const dt=new Date(d.value+'T'+ti.value+':00');
-  if(isNaN(dt.getTime())){showToast('❌ Date invalide');return;}
-  if(dt.getTime()<=Date.now()){showToast('❌ Choisissez une heure dans le futur');return;}
-  const title=item.title||'Rappel';
-  const body=msg&&msg.value?msg.value:'Rappel : '+title;
-  scheduleNotif(Date.now(),title,body,dt.toISOString());
-  closeModal({target:document.getElementById('ov')});
-}
 // INIT
 applyTheme();render(0);
 
-// Check missed notifications on app open (option 1)
-(function checkMissedNotifs(){
-  const notifs=DB.get('scheduled_notifs',[]);
-  const now=Date.now();
-  const missed=notifs.filter(n=>!n.sent&&new Date(n.dt).getTime()<=now);
-  const remaining=notifs.filter(n=>!n.sent&&new Date(n.dt).getTime()>now);
-  if(missed.length){
-    DB.set('scheduled_notifs',remaining);
-    setTimeout(()=>{
-      missed.forEach((n,i)=>{
-        setTimeout(()=>{
-          page_snack('🔔 Rappel manqué : '+n.title+' ('+new Date(n.dt).toLocaleString(S.lang==='fr'?'fr-FR':'en-US',{dateStyle:'short',timeStyle:'short'})+')');
-        },i*2500);
-      });
-    },800);
-  }
-})();
+
 
 function page_snack(msg){
   const t=document.createElement('div');
