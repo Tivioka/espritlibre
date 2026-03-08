@@ -136,6 +136,7 @@ input:checked+.sl::before{transform:translateX(20px)}
 .slide-left{animation:slideInLeft .25s cubic-bezier(.4,0,.2,1)}
 .slide-right{animation:slideInRight .25s cubic-bezier(.4,0,.2,1)}
 .prog-fill{transition:width .15s ease !important}
+.wk-cell{min-height:54px;font-size:14px;}
 .tk-check{transition:background .15s ease,border-color .15s ease !important}
 </style>
 </head>
@@ -214,10 +215,8 @@ function toggleTask(id){
     let subset=[];
     if(type==='today') subset=allTasks.filter(t=>t.due===t0);
     else if(type==='all') subset=allTasks;
-    else if(type.startsWith('list_')){
-      const lid=parseInt(type.replace('list_',''));
-      subset=allTasks.filter(t=>t.lid===lid);
-    } else return;
+    else if(type.startsWith('list_')) subset=allTasks.filter(t=>t.lid===parseInt(type.slice(5)));
+    else return;
     const total=subset.length;
     if(!total) return;
     const done=subset.filter(t=>t.done).length;
@@ -255,10 +254,8 @@ function greet(){const h=new Date().getHours();return h<12?T().good_morning:h<18
 function pBar(done,total,lbl='',type=''){
   const p=total>0?done/total:0,isDone=p>=1&&total>0;
   const txt=isDone?T().all_done:`${done}/${total} ${lbl||T().tasks_done}`;
-  const w=total>0?Math.max(p*100,1):0;
-  const id='pb_'+(type||lbl||Math.random().toString(36).slice(2));
-  setTimeout(()=>{const el=document.getElementById(id);if(el){el.style.width=w+'%';}},80);
-  return `<div class="prog-wrap" data-total="${total}" data-done="${done}" data-type="${type}"><div class="prog-row"><span class="prog-lbl">${lbl?'':T().progress}</span><span class="prog-val${isDone?' done':''}" id="pv_${id}">${txt}</span></div><div class="prog-track"><div class="prog-fill${isDone?' done':''}" id="${id}" style="width:0%"></div></div></div>`;
+  const w=total>0?Math.max(Math.round(p*100),1):0;
+  return `<div class="prog-wrap" data-total="${total}" data-done="${done}" data-type="${type}"><div class="prog-row"><span class="prog-lbl">${lbl?'':T().progress}</span><span class="prog-val${isDone?' done':''}">${txt}</span></div><div class="prog-track"><div class="prog-fill${isDone?' done':''}" style="width:${w}%"></div></div></div>`;
 }
 function evRow(ev,cb){
   const ic=ev.type==='birthday'?'🎂':'📅',col=ev.type==='birthday'?'var(--birthday)':'var(--event-col)',lb=ev.type==='birthday'?T().birthday:T().event;
@@ -295,7 +292,47 @@ function miniCal(){const now=new Date(),yr=now.getFullYear(),mo=now.getMonth(),t
 function goCal(iso){S.selD=iso;S.calY=parseInt(iso.slice(0,4));S.calM=parseInt(iso.slice(5,7))-1;navigate(1);}
 // SCREENS
 function bHome(){const t0=tiso(),evt=evForDate(t0),tkt=tkForDate(t0),up=upcoming(),dn=tkt.filter(t=>t.done).length,ds=new Date().toLocaleDateString(S.lang==='fr'?'fr-FR':S.lang==='es'?'es-ES':'en-US',{weekday:'long',day:'numeric',month:'long',year:'numeric'});let h=`<div class="hdr"><div class="hdr-row"><div><div class="hdr-greet">${greet()}</div><div class="hdr-date">${ds}</div></div><img class="hdr-logo" src="${logo()}"></div></div><div class="scroll screen"><div class="pad"><div class="sec">${T().mini_cal}</div></div><div class="pad">${miniCal()}</div>`;if(tkt.length)h+=`<div class="pad">${pBar(dn,tkt.length,'','today')}</div>`;h+=`<div class="pad"><div class="sec">${T().today}</div></div>`;if(!evt.length&&!tkt.length)h+=`<div class="pad"><div class="card"><div class="empty">🎉 ${T().no_events}</div></div></div>`;evt.forEach(e=>{h+=`<div class="pad">${evRow(e,'render(0)')}</div>`;});tkt.forEach(t=>{h+=`<div class="pad">${tkRow(t,'render(0)')}</div>`;});h+=`<div class="pad"><div class="sec">${T().upcoming}</div></div>`;if(!up.length)h+=`<div class="pad"><div class="card"><div class="empty">✅ ${T().no_events}</div></div></div>`;up.slice(0,8).forEach(x=>{h+=`<div class="pad">${upRow(x)}</div>`;});h+='<div style="height:16px"></div></div>';return h;}
-function bCal(){const yr=S.calY,mo=S.calM,t0=tiso(),fd=(new Date(yr,mo,1).getDay()+6)%7,td=new Date(yr,mo+1,0).getDate(),ed=evDates(),tkd=new Set(getTasks().filter(t=>t.due).map(t=>t.due));let cells='';for(let i=0;i<fd;i++)cells+='<div></div>';for(let d=1;d<=td;d++){const iso=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,isT=iso===t0,isS=iso===S.selD,dots=(ed.has(iso)?'<div class="cdot" style="background:var(--event-col)"></div>':'')+(tkd.has(iso)?'<div class="cdot" style="background:var(--task-col)"></div>':''),cls=isS?'sel':isT?'today':'';cells+=`<div class="cfc ${cls}" onclick="selDate('${iso}')">${d}<div class="cdots">${dots}</div></div>`;}const evd=evForDate(S.selD),tkd2=tkForDate(S.selD);let det=`<div class="cal-det-date">${fmtDate(S.selD)}</div>`;if(!evd.length&&!tkd2.length)det+=`<div class="card"><div class="empty">📭 ${T().no_events}</div></div>`;evd.forEach(e=>{det+=evRow(e,'render(1)');});tkd2.forEach(t=>{det+=tkRow(t,'render(1)');});return `<div class="cal-nav"><button class="cal-nb" onclick="prevM()">‹</button><span class="cal-nm">${T().months[mo]} ${yr}</span><button class="cal-nb" onclick="nextM()">›</button></div><div class="cal-wdays">${T().days.map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div><div class="cal-grid screen">${cells}</div><div class="cal-det scroll screen">${det}</div>`;}
+function bCal(){
+  if(!S.calView)S.calView='month';
+  const yr=S.calY,mo=S.calM,t0=tiso();
+  const ed=evDates(),tkd=new Set(getTasks().filter(t=>t.due).map(t=>t.due));
+  // Toggle button
+  const toggleBtn=`<button class="cal-nb" onclick="S.calView=S.calView==='month'?'week':'month';render(1)" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--text)">${S.calView==='month'?'📅 Semaine':'📆 Mois'}</button>`;
+  const evd=evForDate(S.selD),tkd2=tkForDate(S.selD);
+  let det=`<div class="cal-det-date">${fmtDate(S.selD)}</div>`;
+  if(!evd.length&&!tkd2.length)det+=`<div class="card"><div class="empty">📭 ${T().no_events}</div></div>`;
+  evd.forEach(e=>{det+=evRow(e,'render(1)');});
+  tkd2.forEach(t=>{det+=tkRow(t,'render(1)');});
+  if(S.calView==='week'){
+    // Vue semaine : 7 jours autour du selD
+    const sel=new Date(S.selD+'T00:00:00');
+    const dow=(sel.getDay()+6)%7; // lundi=0
+    const weekStart=new Date(sel); weekStart.setDate(sel.getDate()-dow);
+    let wcells='';
+    for(let i=0;i<7;i++){
+      const d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
+      const iso=d.toISOString().slice(0,10);
+      const isT=iso===t0,isS=iso===S.selD;
+      const dots=(ed.has(iso)?'<div class="cdot" style="background:var(--event-col)"></div>':'')+(tkd.has(iso)?'<div class="cdot" style="background:var(--task-col)"></div>':'');
+      const cls=isS?'sel':isT?'today':'';
+      const dayName=d.toLocaleDateString(S.lang==='fr'?'fr-FR':'en-US',{weekday:'short'});
+      wcells+=`<div class="cfc wk-cell ${cls}" onclick="selDate('${iso}')"><div style="font-size:9px;color:${isS?'inherit':'var(--subtext)'};margin-bottom:1px">${dayName}</div>${d.getDate()}<div class="cdots">${dots}</div></div>`;
+    }
+    const weekLabel=`${weekStart.getDate()} ${T().months_short[weekStart.getMonth()]} – ${new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+6).getDate()} ${T().months_short[new Date(weekStart.getFullYear(),weekStart.getMonth(),weekStart.getDate()+6).getMonth()]} ${yr}`;
+    return `<div class="cal-nav"><button class="cal-nb" onclick="prevW()">‹</button><span class="cal-nm" style="font-size:13px">${weekLabel}</span><button class="cal-nb" onclick="nextW()">›</button></div><div style="display:flex;justify-content:center;margin:4px 0">${toggleBtn}</div><div class="cal-wdays">${T().days.map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div><div class="cal-grid screen" style="grid-template-columns:repeat(7,1fr)">${wcells}</div><div class="cal-det scroll screen">${det}</div>`;
+  }
+  // Vue mois (défaut)
+  const fd=(new Date(yr,mo,1).getDay()+6)%7,td=new Date(yr,mo+1,0).getDate();
+  let cells='';
+  for(let i=0;i<fd;i++)cells+='<div></div>';
+  for(let d=1;d<=td;d++){
+    const iso=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,isT=iso===t0,isS=iso===S.selD;
+    const dots=(ed.has(iso)?'<div class="cdot" style="background:var(--event-col)"></div>':'')+(tkd.has(iso)?'<div class="cdot" style="background:var(--task-col)"></div>':'');
+    const cls=isS?'sel':isT?'today':'';
+    cells+=`<div class="cfc ${cls}" onclick="selDate('${iso}')">${d}<div class="cdots">${dots}</div></div>`;
+  }
+  return `<div class="cal-nav"><button class="cal-nb" onclick="prevM()">‹</button><span class="cal-nm">${T().months[mo]} ${yr}</span><button class="cal-nb" onclick="nextM()">›</button></div><div style="display:flex;justify-content:center;margin:4px 0">${toggleBtn}</div><div class="cal-wdays">${T().days.map(d=>`<div class="cal-wd">${d}</div>`).join('')}</div><div class="cal-grid screen">${cells}</div><div class="cal-det scroll screen">${det}</div>`;
+}
 function bTasks(){const lists=getLists(),tasks=getTasks(),ad=tasks.filter(t=>t.done).length;let h=`<div class="nav-hdr"><h1>${T().tasks}</h1><img src="${logo()}" style="width:38px;height:38px;object-fit:contain"></div><div class="scroll screen"><div class="pad"><div class="sec">${T().my_lists}</div></div>`;if(!lists.length)h+=`<div class="pad"><div class="card"><div class="empty">—</div></div></div>`;lists.forEach(l=>{const lt=getTasks(l.id),ld=lt.filter(t=>t.done).length,p=lt.length?ld/lt.length:0,w=lt.length?Math.max(p*100,1):0;h+=`<div class="pad"><div class="card lst-card" onclick="openLst(${l.id},'${l.name.replace(/'/g,"\'")}')"><div style="display:flex;align-items:center;gap:10px"><div style="width:12px;height:12px;border-radius:4px;background:${l.color};flex-shrink:0"></div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-weight:700;font-size:14px">${l.name}</span><span style="font-size:12px;font-weight:700;color:${l.color}">${ld}/${lt.length}</span></div><div class="prog-wrap" data-type="list_${l.id}" style="margin:0;padding:0;background:none;box-shadow:none"><div class="prog-track"><div class="prog-fill" style="width:${w}%;background:${l.color}"></div></div></div></div><button class="del" onclick="event.stopPropagation();delList(${l.id});render(3)">🗑</button></div></div></div>`;});h+=`<div class="pad"><div class="sec">${T().all_tasks}</div></div>`;if(tasks.length)h+=`<div class="pad">${pBar(ad,tasks.length,'','all')}</div>`;if(!tasks.length)h+=`<div class="pad"><div class="card"><div class="empty">📭 ${T().no_tasks}</div></div></div>`;tasks.forEach(t=>{h+=`<div class="pad">${tkRow(t,'render(3)')}</div>`;});h+='<div style="height:16px"></div></div>';return h;}
 function bSettings(){const no=DB.get('notif_enabled','1')==='1',nb=DB.get('notif_birthday','1')==='1',ne=DB.get('notif_event','1')==='1',nt=DB.get('notif_task','1')==='1',ntime=DB.get('notif_time','08:00');return `<div class="nav-hdr"><h1>${T().settings}</h1><img src="${logo()}" style="width:38px;height:38px;object-fit:contain"></div><div class="scroll screen"><div class="pad"><div class="sec">${T().theme_lbl}</div><div class="card"><div class="th-btns"><button class="th-btn${S.theme==='light'?' active':''}" onclick="setTheme('light')">${T().light}</button><button class="th-btn${S.theme==='dark'?' active':''}" onclick="setTheme('dark')">${T().dark}</button></div></div><div class="sec">${T().language}</div><div class="card"><div class="ln-btns"><button class="ln-btn${S.lang==='fr'?' active':''}" onclick="setLang('fr')">🇫🇷 FR</button><button class="ln-btn${S.lang==='en'?' active':''}" onclick="setLang('en')">🇬🇧 EN</button><button class="ln-btn${S.lang==='es'?' active':''}" onclick="setLang('es')">🇪🇸 ES</button></div></div><div class="sec">${T().notifications}</div><div class="card card-sm" style="margin-bottom:4px"><div class="sr-row"><span>🔔 ${T().notif_toggle}</span><label class="sw"><input type="checkbox" ${no?'checked':''} onchange="DB.set('notif_enabled',this.checked?'1':'0')"><span class="sl"></span></label></div></div><div class="card card-sm" style="margin-bottom:4px"><div class="sr-row"><span>🎂 ${T().notif_birthday}</span><label class="sw"><input type="checkbox" ${nb?'checked':''} onchange="DB.set('notif_birthday',this.checked?'1':'0')"><span class="sl"></span></label></div></div><div class="card card-sm" style="margin-bottom:4px"><div class="sr-row"><span>📅 ${T().notif_event}</span><label class="sw"><input type="checkbox" ${ne?'checked':''} onchange="DB.set('notif_event',this.checked?'1':'0')"><span class="sl"></span></label></div></div><div class="card card-sm" style="margin-bottom:4px"><div class="sr-row"><span>✅ ${T().notif_task}</span><label class="sw"><input type="checkbox" ${nt?'checked':''} onchange="DB.set('notif_task',this.checked?'1':'0')"><span class="sl"></span></label></div></div><div class="card card-sm"><div class="sr-row"><span>⏰ ${T().notif_time}</span><input type="time" value="${ntime}" onchange="DB.set('notif_time',this.value)" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--text);font-family:var(--font);font-size:14px"></div></div><div class="sec">${T().about}</div><div class="card"><div style="display:flex;align-items:center;gap:14px"><img src="${logo()}" style="width:50px;height:50px;object-fit:contain"><div><div style="font-weight:700;font-size:17px">MindFree</div><div style="font-size:12px;color:var(--subtext)">${T().version}</div><div style="font-size:11px;color:var(--subtext);font-style:italic">Made with ❤️ & JavaScript</div></div></div></div><div style="height:30px"></div></div></div>`;}
 // NAV
@@ -313,14 +350,7 @@ function render(idx,dir=null){
   _lastNav=S.nav=idx;
   [0,1,3,4].forEach(i=>{const el=document.getElementById('n'+i);if(el)el.classList.toggle('active',i===idx);});
   updateNav();
-  // Animate progress bars after render
-  setTimeout(()=>{
-    sc.querySelectorAll('.prog-fill').forEach(el=>{
-      const w=el.style.width;
-      el.style.width='0%';
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{el.style.width=w;}));
-    });
-  },50);
+
 }
 function navigate(idx){if(idx===2){openAdd();return;}render(idx);}
 
@@ -355,6 +385,8 @@ function updateNav(){const ids=[0,1,3,4],lbls=[T().home,T().calendar,T().tasks,T
 function prevM(){if(S.calM===0){S.calM=11;S.calY--;}else S.calM--;render(1);}
 function nextM(){if(S.calM===11){S.calM=0;S.calY++;}else S.calM++;render(1);}
 function selDate(iso){S.selD=iso;render(1);}
+function prevW(){const d=new Date(S.selD+'T00:00:00');d.setDate(d.getDate()-7);S.selD=d.toISOString().slice(0,10);S.calY=d.getFullYear();S.calM=d.getMonth();render(1);}
+function nextW(){const d=new Date(S.selD+'T00:00:00');d.setDate(d.getDate()+7);S.selD=d.toISOString().slice(0,10);S.calY=d.getFullYear();S.calM=d.getMonth();render(1);}
 function setTheme(th){S.theme=th;DB.set('theme',th);applyTheme();render(4);}
 function setLang(l){S.lang=l;DB.set('lang',l);render(S.nav);}
 // MODAL
@@ -409,7 +441,71 @@ function scheduleNotif(title,dtStr,type){
 }
 // LIST DETAIL
 function openLst(lid,name){
-  function rdr(){const tasks=getTasks(lid),done=tasks.filter(t=>t.done).length;let rows=pBar(done,tasks.length,'');tasks.forEach(tk=>{rows+=`<div class="card"><div class="tk-row"><div class="tk-check${tk.done?' chk':''}" onclick="toggleTask(${tk.id});openLst(${lid},'${name.replace(/'/g,"\'")}')"></div><div class="tk-body"><div class="tk-title${tk.done?' done':''}">${tk.title}</div></div><button class="del" onclick="delTask(${tk.id});openLst(${lid},'${name.replace(/'/g,"\'")}')">🗑</button></div></div>`;});_modal(`<div class="modal-title">${name}</div>${rows}<div class="atl"><input class="fi" id="lai" placeholder="${T().add_to_list}" onkeydown="if(event.key==='Enter')addToLst(${lid},'${name.replace(/'/g,"\'")}')"><button onclick="addToLst(${lid},'${name.replace(/'/g,"\'")}')">+</button></div><button class="btn btn-g" style="margin-top:12px" onclick="closeModal({target:document.getElementById('ov')});render(3)">${T().close}</button>`);}
+  let _dragId=null,_dragOver=null;
+  function _reorder(){
+    const cards=document.querySelectorAll('#lst-cards .lst-item');
+    const ids=Array.from(cards).map(c=>parseInt(c.dataset.id));
+    const tasks=DB.get('tasks',[]);
+    // Sort tasks array by new order
+    const ordered=ids.map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
+    const rest=tasks.filter(t=>!ids.includes(t.id));
+    DB.set('tasks',[...rest,...ordered]);
+  }
+  function rdr(){
+    const tasks=getTasks(lid),done=tasks.filter(t=>t.done).length;
+    let rows='';
+    tasks.forEach(tk=>{
+      rows+=`<div class="lst-item card" data-id="${tk.id}" style="margin:3px 0;touch-action:none">
+        <div class="tk-row">
+          <span class="drag-handle" style="font-size:18px;color:var(--subtext);cursor:grab;padding:0 6px;user-select:none">⠿</span>
+          <div class="tk-check${tk.done?' chk':''}" data-tkid="${tk.id}" onclick="toggleTask(${tk.id});openLst(${lid},'${name.replace(/'/g,"\'")}')"></div>
+          <div class="tk-body" style="flex:1"><div class="tk-title${tk.done?' done':''}">${tk.title}</div></div>
+          <button class="del" onclick="delTask(${tk.id});openLst(${lid},'${name.replace(/'/g,"\'")}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    _modal(`<div class="modal-title">${name}</div>
+      ${pBar(done,tasks.length,'')}
+      <div id="lst-cards">${rows}</div>
+      <div class="atl"><input class="fi" id="lai" placeholder="${T().add_to_list}" onkeydown="if(event.key==='Enter')addToLst(${lid},'${name.replace(/'/g,"\'")}')"><button onclick="addToLst(${lid},'${name.replace(/'/g,"\'")}')">+</button></div>
+      <button class="btn btn-g" style="margin-top:12px" onclick="closeModal({target:document.getElementById('ov')});render(3)">${T().close}</button>`);
+    // Touch drag & drop
+    document.querySelectorAll('#lst-cards .lst-item').forEach(card=>{
+      let startY=0,clone=null,origIdx=0;
+      const handle=card.querySelector('.drag-handle');
+      handle.addEventListener('touchstart',e=>{
+        e.stopPropagation();
+        startY=e.touches[0].clientY;
+        _dragId=parseInt(card.dataset.id);
+        origIdx=Array.from(card.parentNode.children).indexOf(card);
+        card.style.opacity='0.5';
+      },{passive:true});
+      handle.addEventListener('touchmove',e=>{
+        e.stopPropagation(); e.preventDefault();
+        const y=e.touches[0].clientY;
+        const container=document.getElementById('lst-cards');
+        const items=Array.from(container.querySelectorAll('.lst-item'));
+        items.forEach(item=>{
+          if(item===card)return;
+          const r=item.getBoundingClientRect();
+          const mid=r.top+r.height/2;
+          if(y>r.top&&y<r.bottom){
+            _dragOver=parseInt(item.dataset.id);
+            const curIdx=items.indexOf(card);
+            const tgtIdx=items.indexOf(item);
+            if(curIdx<tgtIdx) container.insertBefore(card,item.nextSibling);
+            else container.insertBefore(card,item);
+          }
+        });
+      },{passive:false});
+      handle.addEventListener('touchend',e=>{
+        e.stopPropagation();
+        card.style.opacity='1';
+        _reorder();
+        _dragId=null; _dragOver=null;
+      },{passive:true});
+    });
+  }
   rdr();
 }
 function addToLst(lid,name){const v=(document.getElementById('lai')?.value||'').trim();if(!v)return;addTask(v,{lid});openLst(lid,name);}
