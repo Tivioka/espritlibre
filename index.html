@@ -42,7 +42,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--b
 .prog-val{font-weight:700;color:var(--primary)}
 .prog-val.done{color:var(--success)}
 .prog-track{background:var(--prog-bg);border-radius:4px;height:8px;overflow:hidden}
-.prog-fill{height:8px;border-radius:4px;background:var(--primary);transition:width .4s ease}
+.prog-fill{height:8px;border-radius:4px;background:var(--primary);transition:width .15s ease}
 .prog-fill.done{background:var(--success)}
 .ev-row{display:flex;align-items:center;gap:10px}
 .ev-icon{font-size:22px;flex-shrink:0}
@@ -135,7 +135,7 @@ input:checked+.sl::before{transform:translateX(20px)}
 .screen{animation:fi .2s ease}
 .slide-left{animation:slideInLeft .25s cubic-bezier(.4,0,.2,1)}
 .slide-right{animation:slideInRight .25s cubic-bezier(.4,0,.2,1)}
-.prog-fill{transition:width .6s cubic-bezier(.4,0,.2,1) !important}
+.prog-fill{transition:width .15s ease !important}
 .tk-check{transition:background .15s ease,border-color .15s ease !important}
 </style>
 </head>
@@ -190,7 +190,7 @@ function toggleTask(id){
     const title=chk.parentElement.querySelector('.tk-title');
     if(title) title.classList.toggle('done',!!tk.done);
   }
-  // Update progress bars
+  // Update progress bars instantly
   const t0=tiso(), allTasks=DB.get('tasks',[]);
   document.querySelectorAll('.prog-wrap[data-type]').forEach(wrap=>{
     const type=wrap.dataset.type;
