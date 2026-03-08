@@ -226,7 +226,7 @@ function getTasks(lid=null,dateFilter=null){
   }
   return tasks;
 }
-function addTask(title,{lid=null,notes='',due=null,recurrence='none'}={}){const a=DB.get('tasks',[]);a.push({id:Date.now(),title,lid,notes,due,done:false,recurrence:recurrence||'none'});DB.set('tasks',a);}
+function addTask(title,{lid=null,notes='',due=null,time='',recurrence='none'}={}){const a=DB.get('tasks',[]);a.push({id:Date.now(),title,lid,notes,due,time:time||'',done:false,recurrence:recurrence||'none'});DB.set('tasks',a);}
 function toggleTask(id){
   const a=DB.get('tasks',[]);
   const tk=a.find(x=>x.id===id);
@@ -264,7 +264,7 @@ function getLists(){return DB.get('lists',[]);}
 function addList(name){const a=DB.get('lists',[]);a.push({id:Date.now(),name,color:'#5ABFEC'});DB.set('lists',a);}
 function delList(id){DB.set('lists',DB.get('lists',[]).filter(l=>l.id!==id));DB.set('tasks',DB.get('tasks',[]).filter(t=>t.lid!==id));}
 function getEvents(){return DB.get('events',[]);}
-function addEvent(title,date,type='event',rec=false){const a=DB.get('events',[]);a.push({id:Date.now(),title,date,type,rec});DB.set('events',a);}
+function addEvent(title,date,type='event',rec=false,time=''){const a=DB.get('events',[]);a.push({id:Date.now(),title,date,type,rec,time:time||''});DB.set('events',a);}
 function delEvent(id){DB.set('events',DB.get('events',[]).filter(e=>e.id!==id));}
 function evForDate(iso){const md=iso.slice(5);return getEvents().filter(e=>e.date===iso||(e.rec&&e.date.slice(5)===md));}
 function tkForDate(iso){return getTasks(null,iso);}
@@ -313,7 +313,7 @@ function evRow(ev,cb){
         ${hasN?`<button class="btn btn-g" style="flex:none;padding:8px 12px;font-size:12px" onclick="delNotif('${nk}','nd_${ev.id}')">✕</button>`:''}
       </div>
     </div>`;
-  return `<div class="card"><div class="ev-row"><span class="ev-icon">${ic}</span><div class="ev-body"><div class="ev-title">${ev.title}</div><div class="ev-sub" style="color:${col}">${lb} · ${ev.date}</div><div style="margin-top:6px">${nbtn}</div></div><button class="del" onclick="delEvent(${ev.id});${cb}">🗑</button></div></div>`;
+  return `<div class="card"><div class="ev-row"><span class="ev-icon">${ic}</span><div class="ev-body"><div class="ev-title">${ev.title}</div><div class="ev-sub" style="color:${col}">${lb} · ${ev.date}${ev.time?" à "+ev.time:""}</div><div style="margin-top:6px">${nbtn}</div></div><button class="del" onclick="delEvent(${ev.id});${cb}">🗑</button></div></div>`;
 }
 function tkRow(tk,cb){
   const nk='notif_tk_'+tk.id, hasN=DB.get(nk,'');
@@ -339,7 +339,7 @@ function tkRow(tk,cb){
         ${hasN?`<button class="btn btn-g" style="flex:none;padding:8px 12px;font-size:12px" onclick="delNotif('${nk}','tnd_${tk.id}')">✕</button>`:''}
       </div>
     </div>`;
-  return `<div class="card"><div class="tk-row"><div class="tk-check${tk.done?' chk':''}" data-tkid="${tk.id}" onclick="toggleTask(${tk.id});${cb}"></div><div class="tk-body"><div class="tk-title${tk.done?' done':''}">${tk.title}</div>${tk.notes?`<div class="tk-note">${tk.notes}</div>`:''}<div style="margin-top:4px">${nbtn}</div></div><button class="del" onclick="delTask(${tk.id});${cb}">🗑</button></div></div>`;
+  return `<div class="card"><div class="tk-row"><div class="tk-check${tk.done?' chk':''}" data-tkid="${tk.id}" onclick="toggleTask(${tk.id});${cb}"></div><div class="tk-body"><div class="tk-title${tk.done?' done':''}">${tk.title}</div>${tk.notes?`<div class="tk-note">${tk.notes}</div>`:''}${tk.time?`<div class="tk-note">🕐 ${tk.time}</div>`:''}<div style="margin-top:4px">${nbtn}</div></div><button class="del" onclick="delTask(${tk.id});${cb}">🗑</button></div></div>`;
 }
 function upRow(it){const ic={birthday:'🎂',task:'✅',event:'📅'}[it.type]||'📅',col={birthday:'var(--birthday)',task:'var(--task-col)',event:'var(--event-col)'}[it.type]||'var(--event-col)',dl=dLeft(it.date),badge=S.lang==='fr'?`+${dl}j`:`+${dl}d`;return `<div class="card"><div class="ev-row"><span class="ev-icon">${ic}</span><div class="ev-body"><div class="ev-title">${it.title}</div></div><span class="badge" style="background:${col}22;color:${col}">${badge}</span></div></div>`;}
 // MINI CAL
@@ -451,22 +451,37 @@ function openAdd(){showChoose();}
 function closeModal(e){if(e&&e.target!==document.getElementById('ov'))return;document.getElementById('ov').classList.remove('open');}
 function _modal(html){document.getElementById('modal').innerHTML=html;document.getElementById('ov').classList.add('open');}
 function showChoose(){_modal(`<div class="modal-title">${T().choose_what}</div><button class="mopt" onclick="showForm('task')">✅ ${T().add_task} <span>›</span></button><button class="mopt" onclick="showForm('event')">📅 ${T().add_event} <span>›</span></button><button class="mopt" onclick="showForm('birthday')">🎂 ${T().add_birthday} <span>›</span></button><button class="mopt" onclick="showForm('list')">📋 ${T().add_list} <span>›</span></button><button class="btn btn-g" style="margin-top:8px" onclick="closeModal({target:document.getElementById('ov')})">${T().cancel}</button>`);}
-function showForm(mode){const titles={task:T().add_task,event:T().add_event,birthday:T().add_birthday,list:T().add_list};let ex='';if(['event','birthday','task'].includes(mode))ex+=`<div class="ff"><label>${T().date_lbl}</label><input class="fi" id="fd" type="date" value="${tiso()}"></div>`;if(['event','birthday'].includes(mode))ex+=`<div class="sw-row"><span class="sw-lbl">${T().repeat_yearly}</span><label class="sw"><input type="checkbox" id="fr" ${mode==='birthday'?'checked':''}><span class="sl"></span></label></div>`;if(mode==='task'){ex+=`<div class="ff"><label>${T().notes_lbl}</label><textarea class="fi" id="fn" rows="2" style="resize:none"></textarea></div>`;ex+=`<div class="ff"><label>🔁 Récurrence</label><select class="fi" id="frec"><option value="none">Aucune</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="monthly">Chaque mois</option><option value="yearly">Chaque année</option></select></div>`;}
-  // Notification field for all types
-  const notifDefault=document.getElementById('fd')?.value||tiso();
-  ex+=`<div class="notif-row"><span>🔔</span><label>Rappel</label><input type="datetime-local" id="fnotif" style=""></div>`;
-  _modal(`<div class="modal-title">${titles[mode]}</div><div class="ff"><label>${T().title_lbl}</label><input class="fi" id="ft" placeholder="${titles[mode]}"></div>${ex}<div class="mact"><button class="btn btn-g" onclick="showChoose()">${T().cancel}</button><button class="btn btn-p" onclick="doSave('${mode}')">${T().save}</button></div>`);setTimeout(()=>document.getElementById('ft')?.focus(),100);}
+function showForm(mode){
+  const titles={task:T().add_task,event:T().add_event,birthday:T().add_birthday,list:T().add_list};
+  let ex='';
+  if(['event','birthday','task'].includes(mode)){
+    // Date + Heure côte à côte
+    ex+=`<div class="ff"><label>${T().date_lbl}</label><div style="display:flex;gap:8px">
+      <input class="fi" id="fd" type="date" value="${tiso()}" style="flex:1">
+      <input class="fi" id="ftime" type="time" style="width:110px" placeholder="Heure">
+    </div></div>`;
+  }
+  if(['event','birthday'].includes(mode)){
+    ex+=`<div class="sw-row"><span class="sw-lbl">${T().repeat_yearly}</span><label class="sw"><input type="checkbox" id="fr" ${mode==='birthday'?'checked':''}><span class="sl"></span></label></div>`;
+  }
+  if(mode==='task'){
+    ex+=`<div class="ff"><label>${T().notes_lbl}</label><textarea class="fi" id="fn" rows="2" style="resize:none"></textarea></div>`;
+    ex+=`<div class="ff"><label>🔁 Récurrence</label><select class="fi" id="frec"><option value="none">Aucune</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="monthly">Chaque mois</option><option value="yearly">Chaque année</option></select></div>`;
+  }
+  _modal(`<div class="modal-title">${titles[mode]}</div><div class="ff"><label>${T().title_lbl}</label><input class="fi" id="ft" placeholder="${titles[mode]}"></div>${ex}<div class="mact"><button class="btn btn-g" onclick="showChoose()">${T().cancel}</button><button class="btn btn-p" onclick="doSave('${mode}')">${T().save}</button></div>`);
+  setTimeout(()=>document.getElementById('ft')?.focus(),100);
+}
 function doSave(mode){
   const title=(document.getElementById('ft')?.value||'').trim();
   if(!title){document.getElementById('ft').classList.add('err');return;}
   const date=document.getElementById('fd')?.value||null;
+  const time=document.getElementById('ftime')?.value||'';
   const rec=document.getElementById('fr')?.checked||false;
   const notes=document.getElementById('fn')?.value||'';
-  const notifDt=document.getElementById('fnotif')?.value||null;
-  const recVal=document.getElementById('frec')?.value||'none';if(mode==='task')addTask(title,{notes,due:date,recurrence:recVal});
-  else if(mode==='event'||mode==='birthday')addEvent(title,date,mode,rec);
-  else if(mode==='list')addList(title);
-  if(notifDt){scheduleNotif(title,new Date(notifDt),mode+'_'+Date.now());}
+  const recVal=document.getElementById('frec')?.value||'none';
+  if(mode==='task') addTask(title,{notes,due:date,time,recurrence:recVal});
+  else if(mode==='event'||mode==='birthday') addEvent(title,date,mode,rec,time);
+  else if(mode==='list') addList(title);
   closeModal({target:document.getElementById('ov')});
   render(S.nav);showToast('✅ Enregistré !');
 }
