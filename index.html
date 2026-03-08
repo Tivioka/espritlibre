@@ -307,35 +307,40 @@ function render(idx,dir=null){
 }
 function navigate(idx){if(idx===2){openAdd();return;}render(idx);}
 
-// SWIPE DETECTION
+// SWIPE DETECTION - attached to document, works after reopen
 (function(){
   let tx=0,ty=0,dir=null;
   const navOrder=[0,1,3,4];
-  const sc=()=>document.getElementById('sc');
 
-  sc().addEventListener('touchstart',e=>{
+  document.addEventListener('touchstart',e=>{
+    // Ignore if modal open or touching nav bar
+    if(document.getElementById('ov').classList.contains('open'))return;
+    if(e.target.closest('.bnav'))return;
     tx=e.touches[0].clientX;
     ty=e.touches[0].clientY;
     dir=null;
   },{passive:true});
 
-  sc().addEventListener('touchmove',e=>{
-    if(dir)return;
-    const dx=Math.abs(e.touches[0].clientX-tx);
-    const dy=Math.abs(e.touches[0].clientY-ty);
-    if(dx<5&&dy<5)return;
-    dir=dx>dy?'h':'v';
+  document.addEventListener('touchmove',e=>{
+    if(dir==='v'||dir===null&&Math.abs(e.touches[0].clientX-tx)<5&&Math.abs(e.touches[0].clientY-ty)<5)return;
+    if(!dir){
+      const dx=Math.abs(e.touches[0].clientX-tx);
+      const dy=Math.abs(e.touches[0].clientY-ty);
+      if(dx<5&&dy<5)return;
+      dir=dx>dy?'h':'v';
+    }
     if(dir==='h')e.preventDefault();
   },{passive:false});
 
-  sc().addEventListener('touchend',e=>{
+  document.addEventListener('touchend',e=>{
     if(dir!=='h')return;
     if(document.getElementById('ov').classList.contains('open'))return;
     const dx=e.changedTouches[0].clientX-tx;
-    if(Math.abs(dx)<50)return;
+    if(Math.abs(dx)<50){dir=null;return;}
     const cur=navOrder.indexOf(S.nav);
     if(dx<0&&cur<navOrder.length-1)render(navOrder[cur+1],'slide-right');
     else if(dx>0&&cur>0)render(navOrder[cur-1],'slide-left');
+    dir=null;
   },{passive:true});
 })();
 function updateNav(){const ids=[0,1,3,4],lbls=[T().home,T().calendar,T().tasks,T().settings];ids.forEach((id,i)=>{const el=document.getElementById('nl'+id);if(el)el.textContent=lbls[i];});}
@@ -544,6 +549,33 @@ function doSaveNotif(){
 }
 // INIT
 applyTheme();render(0);
+
+// Check missed notifications on app open (option 1)
+(function checkMissedNotifs(){
+  const notifs=DB.get('scheduled_notifs',[]);
+  const now=Date.now();
+  const missed=notifs.filter(n=>!n.sent&&new Date(n.dt).getTime()<=now);
+  const remaining=notifs.filter(n=>!n.sent&&new Date(n.dt).getTime()>now);
+  if(missed.length){
+    DB.set('scheduled_notifs',remaining);
+    setTimeout(()=>{
+      missed.forEach((n,i)=>{
+        setTimeout(()=>{
+          page_snack('🔔 Rappel manqué : '+n.title+' ('+new Date(n.dt).toLocaleString(S.lang==='fr'?'fr-FR':'en-US',{dateStyle:'short',timeStyle:'short'})+')');
+        },i*2500);
+      });
+    },800);
+  }
+})();
+
+function page_snack(msg){
+  const t=document.createElement('div');
+  t.className='toast show';
+  t.style.cssText='bottom:90px;max-width:90%;text-align:center;white-space:normal';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),4000);
+}
 </script>
 </body>
 </html>
