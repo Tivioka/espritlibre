@@ -505,6 +505,7 @@ setInterval(checkScheduledNotifs,60000);
 checkScheduledNotifs();
 
 function openNotifModal(item){
+  window._notifItem=item;
   reqNotifPerm(granted=>{
     if(!granted){showToast('❌ Notifications bloquées dans le navigateur');return;}
     const now=new Date();
@@ -521,23 +522,24 @@ function openNotifModal(item){
       <div class="ff"><label>Message (optionnel)</label><input class="fi" id="notif-msg" placeholder="Rappel : ${item.title}"></div>
       <div class="mact">
         <button class="btn btn-g" onclick="closeModal({target:document.getElementById('ov')})">${T().cancel}</button>
-        <button class="btn btn-p" onclick="saveNotif(${JSON.stringify(item).replace(/'/g,'&#39;')})">🔔 Programmer</button>
+        <button class="btn btn-p" onclick="doSaveNotif()">🔔 Programmer</button>
       </div>`);
   });
 }
-function saveNotif(item){
-  const d=document.getElementById('notif-date')?.value;
-  const ti=document.getElementById('notif-time')?.value||'09:00';
-  const msg=document.getElementById('notif-msg')?.value||('Rappel : '+item.title);
-  if(!d||!ti){showToast('❌ Choisissez une date et une heure');return;}
-  const dt=new Date(d+'T'+ti+':00');
-  const now=new Date();
-  // Allow same day if time is in the future
+
+function doSaveNotif(){
+  const item=window._notifItem||{};
+  const d=document.getElementById('notif-date');
+  const ti=document.getElementById('notif-time');
+  const msg=document.getElementById('notif-msg');
+  if(!d||!d.value){showToast('❌ Choisissez une date');return;}
+  if(!ti||!ti.value){showToast('❌ Choisissez une heure');return;}
+  const dt=new Date(d.value+'T'+ti.value+':00');
   if(isNaN(dt.getTime())){showToast('❌ Date invalide');return;}
-  if(dt.getTime()<=now.getTime()){
-    showToast('❌ Choisissez une heure dans le futur');return;
-  }
-  scheduleNotif(item.id?item.id+'_'+Date.now():Date.now(),item.title,msg,dt.toISOString());
+  if(dt.getTime()<=Date.now()){showToast('❌ Choisissez une heure dans le futur');return;}
+  const title=item.title||'Rappel';
+  const body=msg&&msg.value?msg.value:'Rappel : '+title;
+  scheduleNotif(Date.now(),title,body,dt.toISOString());
   closeModal({target:document.getElementById('ov')});
 }
 // INIT
