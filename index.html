@@ -176,8 +176,25 @@ function tiso(){const d=new Date();return `${d.getFullYear()}-${String(d.getMont
 function logo(){return S.theme==='dark'?LD:LL;}
 function T(){return TR[S.lang];}
 // DATA
-function getTasks(lid=null){const a=DB.get('tasks',[]);return lid!==null?a.filter(t=>t.lid===lid):a;}
-function addTask(title,{lid=null,notes='',due=null}={}){const a=DB.get('tasks',[]);a.push({id:Date.now(),title,lid,notes,due,done:false});DB.set('tasks',a);}
+function getTasks(lid=null,dateFilter=null){
+  const a=DB.get('tasks',[]);
+  let tasks=lid!==null?a.filter(t=>t.lid===lid):a;
+  if(dateFilter){
+    tasks=tasks.filter(t=>{
+      if(t.due===dateFilter)return true;
+      if(!t.recurrence||t.recurrence==='none'||!t.due)return false;
+      const start=new Date(t.due+'T00:00:00'),target=new Date(dateFilter+'T00:00:00');
+      if(target<start)return false;
+      if(t.recurrence==='daily')return true;
+      if(t.recurrence==='weekly')return start.getDay()===target.getDay();
+      if(t.recurrence==='monthly')return start.getDate()===target.getDate();
+      if(t.recurrence==='yearly')return start.getMonth()===target.getMonth()&&start.getDate()===target.getDate();
+      return false;
+    });
+  }
+  return tasks;
+}
+function addTask(title,{lid=null,notes='',due=null,recurrence='none'}={}){const a=DB.get('tasks',[]);a.push({id:Date.now(),title,lid,notes,due,done:false,recurrence:recurrence||'none'});DB.set('tasks',a);}
 function toggleTask(id){
   const a=DB.get('tasks',[]);
   const tk=a.find(x=>x.id===id);
@@ -220,7 +237,7 @@ function getEvents(){return DB.get('events',[]);}
 function addEvent(title,date,type='event',rec=false){const a=DB.get('events',[]);a.push({id:Date.now(),title,date,type,rec});DB.set('events',a);}
 function delEvent(id){DB.set('events',DB.get('events',[]).filter(e=>e.id!==id));}
 function evForDate(iso){const md=iso.slice(5);return getEvents().filter(e=>e.date===iso||(e.rec&&e.date.slice(5)===md));}
-function tkForDate(iso){return getTasks().filter(t=>t.due===iso);}
+function tkForDate(iso){return getTasks(null,iso);}
 function evDates(){return new Set(getEvents().map(e=>e.date));}
 function upcoming(days=7){const now=new Date();now.setHours(0,0,0,0);const end=new Date(now);end.setDate(end.getDate()+days);const t0=tiso();const out=[];getEvents().forEach(e=>{const d=new Date(e.date);d.setHours(0,0,0,0);if(d>now&&d<=end)out.push({title:e.title,date:e.date,type:e.type});});getTasks().filter(t=>!t.done&&t.due).forEach(t=>{const d=new Date(t.due);d.setHours(0,0,0,0);if(d>now&&d<=end)out.push({title:t.title,date:t.due,type:'task'});});return out.filter(x=>x.date!==t0).sort((a,b)=>a.date.localeCompare(b.date));}
 // TRANSLATIONS
@@ -307,40 +324,31 @@ function render(idx,dir=null){
 }
 function navigate(idx){if(idx===2){openAdd();return;}render(idx);}
 
-// SWIPE DETECTION - attached to document, works after reopen
+// SWIPE DETECTION
 (function(){
-  let tx=0,ty=0,dir=null;
+  let tx=0,ty=0,moved=false,isH=false;
   const navOrder=[0,1,3,4];
-
   document.addEventListener('touchstart',e=>{
-    // Ignore if modal open or touching nav bar
+    tx=e.touches[0].clientX; ty=e.touches[0].clientY;
+    moved=false; isH=false;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(moved)return;
+    const dx=Math.abs(e.touches[0].clientX-tx);
+    const dy=Math.abs(e.touches[0].clientY-ty);
+    if(dx<8&&dy<8)return;
+    moved=true; isH=dx>dy*1.2;
+    if(isH)e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchend',e=>{
+    if(!isH)return;
     if(document.getElementById('ov').classList.contains('open'))return;
     if(e.target.closest('.bnav'))return;
-    tx=e.touches[0].clientX;
-    ty=e.touches[0].clientY;
-    dir=null;
-  },{passive:true});
-
-  document.addEventListener('touchmove',e=>{
-    if(dir==='v'||dir===null&&Math.abs(e.touches[0].clientX-tx)<5&&Math.abs(e.touches[0].clientY-ty)<5)return;
-    if(!dir){
-      const dx=Math.abs(e.touches[0].clientX-tx);
-      const dy=Math.abs(e.touches[0].clientY-ty);
-      if(dx<5&&dy<5)return;
-      dir=dx>dy?'h':'v';
-    }
-    if(dir==='h')e.preventDefault();
-  },{passive:false});
-
-  document.addEventListener('touchend',e=>{
-    if(dir!=='h')return;
-    if(document.getElementById('ov').classList.contains('open'))return;
     const dx=e.changedTouches[0].clientX-tx;
-    if(Math.abs(dx)<50){dir=null;return;}
+    if(Math.abs(dx)<60)return;
     const cur=navOrder.indexOf(S.nav);
     if(dx<0&&cur<navOrder.length-1)render(navOrder[cur+1],'slide-right');
     else if(dx>0&&cur>0)render(navOrder[cur-1],'slide-left');
-    dir=null;
   },{passive:true});
 })();
 function updateNav(){const ids=[0,1,3,4],lbls=[T().home,T().calendar,T().tasks,T().settings];ids.forEach((id,i)=>{const el=document.getElementById('nl'+id);if(el)el.textContent=lbls[i];});}
@@ -354,7 +362,7 @@ function openAdd(){showChoose();}
 function closeModal(e){if(e&&e.target!==document.getElementById('ov'))return;document.getElementById('ov').classList.remove('open');}
 function _modal(html){document.getElementById('modal').innerHTML=html;document.getElementById('ov').classList.add('open');}
 function showChoose(){_modal(`<div class="modal-title">${T().choose_what}</div><button class="mopt" onclick="showForm('task')">✅ ${T().add_task} <span>›</span></button><button class="mopt" onclick="showForm('event')">📅 ${T().add_event} <span>›</span></button><button class="mopt" onclick="showForm('birthday')">🎂 ${T().add_birthday} <span>›</span></button><button class="mopt" onclick="showForm('list')">📋 ${T().add_list} <span>›</span></button><button class="btn btn-g" style="margin-top:8px" onclick="closeModal({target:document.getElementById('ov')})">${T().cancel}</button>`);}
-function showForm(mode){const titles={task:T().add_task,event:T().add_event,birthday:T().add_birthday,list:T().add_list};let ex='';if(['event','birthday','task'].includes(mode))ex+=`<div class="ff"><label>${T().date_lbl}</label><input class="fi" id="fd" type="date" value="${tiso()}"></div>`;if(['event','birthday'].includes(mode))ex+=`<div class="sw-row"><span class="sw-lbl">${T().repeat_yearly}</span><label class="sw"><input type="checkbox" id="fr" ${mode==='birthday'?'checked':''}><span class="sl"></span></label></div>`;if(mode==='task')ex+=`<div class="ff"><label>${T().notes_lbl}</label><textarea class="fi" id="fn" rows="2" style="resize:none"></textarea></div>`;
+function showForm(mode){const titles={task:T().add_task,event:T().add_event,birthday:T().add_birthday,list:T().add_list};let ex='';if(['event','birthday','task'].includes(mode))ex+=`<div class="ff"><label>${T().date_lbl}</label><input class="fi" id="fd" type="date" value="${tiso()}"></div>`;if(['event','birthday'].includes(mode))ex+=`<div class="sw-row"><span class="sw-lbl">${T().repeat_yearly}</span><label class="sw"><input type="checkbox" id="fr" ${mode==='birthday'?'checked':''}><span class="sl"></span></label></div>`;if(mode==='task'){ex+=`<div class="ff"><label>${T().notes_lbl}</label><textarea class="fi" id="fn" rows="2" style="resize:none"></textarea></div>`;ex+=`<div class="ff"><label>🔁 Récurrence</label><select class="fi" id="frec"><option value="none">Aucune</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="monthly">Chaque mois</option><option value="yearly">Chaque année</option></select></div>`;}
   // Notification field for all types
   const notifDefault=document.getElementById('fd')?.value||tiso();
   ex+=`<div class="notif-row"><span>🔔</span><label>Rappel</label><input type="datetime-local" id="fnotif" style=""></div>`;
@@ -366,7 +374,7 @@ function doSave(mode){
   const rec=document.getElementById('fr')?.checked||false;
   const notes=document.getElementById('fn')?.value||'';
   const notifDt=document.getElementById('fnotif')?.value||null;
-  if(mode==='task')addTask(title,{notes,due:date});
+  const recVal=document.getElementById('frec')?.value||'none';if(mode==='task')addTask(title,{notes,due:date,recurrence:recVal});
   else if(mode==='event'||mode==='birthday')addEvent(title,date,mode,rec);
   else if(mode==='list')addList(title);
   // Schedule notification if set
