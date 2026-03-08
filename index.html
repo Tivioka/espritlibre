@@ -190,17 +190,27 @@ async function _fsSave(key, val){
   }catch(e){console.warn('Firestore save error:',e);}
 }
 // Firestore load all data
+function _clearUserData(){
+  // Efface toutes les données utilisateur du localStorage (tâches, événements, listes)
+  const dataKeys = ['tasks','lists','events','pending_notifs'];
+  dataKeys.forEach(k => localStorage.removeItem('mf_'+k));
+  // Effacer aussi les notifs individuelles
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('mf_notif_'))
+    .forEach(k => localStorage.removeItem(k));
+}
+
 async function _fsLoad(){
   try{
     const {collection,getDocs}=await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+    // D'abord vider les données locales pour éviter la contamination entre comptes
+    _clearUserData();
     const snap=await getDocs(collection(window._fsDb,'users',window._fsUser.uid,'data'));
     snap.forEach(d=>{
       const key=d.id, raw=d.data().val;
-      if(raw){
-        localStorage.setItem('mf_'+key, raw);
-      }
+      if(raw) localStorage.setItem('mf_'+key, raw);
     });
-    console.log('Firestore data loaded');
+    console.log('Firestore data loaded for', window._fsUser.uid);
   }catch(e){console.warn('Firestore load error:',e);}
 }
 let S={theme:DB.get('theme','light'),lang:DB.get('lang','fr'),nav:0,calY:new Date().getFullYear(),calM:new Date().getMonth(),selD:tiso()};
@@ -675,7 +685,10 @@ async function initFCM() {
     window._fsDb = getFirestore(app);
     const auth = getAuth(app);
     window._fsAuth = auth;
-    window._fsSignOut = () => signOut(auth);
+    window._fsSignOut = () => {
+      _clearUserData();
+      signOut(auth);
+    };
     window._fsSignIn = async () => {
       try {
         const provider = new GoogleAuthProvider();
@@ -695,12 +708,20 @@ async function initFCM() {
     };
 
     // Auth state
+    let _prevUid = null;
     onAuthStateChanged(auth, async user => {
       window._fsUser = user;
       window._currentUser = user;
       if(user) {
+        // Si changement de compte, vider d'abord
+        if(_prevUid && _prevUid !== user.uid) {
+          _clearUserData();
+        }
+        _prevUid = user.uid;
         showToast('✅ Connecté : ' + user.displayName);
         await _fsLoad();
+      } else {
+        _prevUid = null;
       }
       render(S.nav);
     });
